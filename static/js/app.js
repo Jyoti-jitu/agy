@@ -13,6 +13,10 @@ const loadingState = document.getElementById('loading-state');
 const feedContainer = document.getElementById('feed-container');
 const emptyState = document.getElementById('empty-state');
 
+// Theme Switch & CSV Export Elements
+const themeCheckbox = document.getElementById('checkbox-theme');
+const exportCsvBtn = document.getElementById('export-csv-btn');
+
 // Floating Bar Elements
 const floatingBar = document.getElementById('floating-bar');
 const selectedCount = document.getElementById('selected-count');
@@ -35,12 +39,35 @@ const toastContainer = document.getElementById('toast-container');
 
 // Initial Setup
 document.addEventListener('DOMContentLoaded', () => {
+  // Theme initialization from localStorage
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  if (savedTheme === 'light') {
+    document.body.classList.add('light-theme');
+    if (themeCheckbox) themeCheckbox.checked = true;
+  }
+
   fetchReleases(false);
   
   // Event Listeners
   refreshBtn.addEventListener('click', () => fetchReleases(true));
   searchInput.addEventListener('input', filterAndRenderFeed);
   typeFilter.addEventListener('change', filterAndRenderFeed);
+  
+  if (exportCsvBtn) {
+    exportCsvBtn.addEventListener('click', exportToCSV);
+  }
+
+  if (themeCheckbox) {
+    themeCheckbox.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        document.body.classList.add('light-theme');
+        localStorage.setItem('theme', 'light');
+      } else {
+        document.body.classList.remove('light-theme');
+        localStorage.setItem('theme', 'dark');
+      }
+    });
+  }
   
   // Multi-select Actions
   clearSelectionBtn.addEventListener('click', clearAllSelections);
@@ -197,12 +224,21 @@ function renderFeed(updates) {
           </svg>
           <span>View on Google Docs</span>
         </a>
-        <button class="btn btn-primary tweet-single-btn" data-id="${update.id}" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: var(--panel-hover-border); color: #fff;">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-          </svg>
-          Tweet
-        </button>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn btn-secondary copy-single-btn" data-id="${update.id}" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-color: var(--panel-border);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 2px;">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            Copy
+          </button>
+          <button class="btn btn-primary tweet-single-btn" data-id="${update.id}" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: var(--panel-hover-border); color: var(--text-primary);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+            Tweet
+          </button>
+        </div>
       </div>
     `;
     
@@ -218,11 +254,24 @@ function renderFeed(updates) {
           e.target.tagName !== 'BUTTON' && 
           e.target.tagName !== 'INPUT' && 
           !e.target.closest('a') && 
-          !e.target.closest('button')) {
+          !e.target.closest('button') &&
+          !e.target.closest('.copy-single-btn')) {
         const check = card.querySelector('.update-select-checkbox');
         check.checked = !check.checked;
         toggleSelect(update.id, check.checked);
       }
+    });
+    
+    // Single Copy Trigger
+    const copyBtn = card.querySelector('.copy-single-btn');
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const copyText = `BigQuery Release Update (${update.date})\n[${update.type}] ${update.content_text}\nSource: ${update.link}`;
+      navigator.clipboard.writeText(copyText).then(() => {
+        showToast('Copied to clipboard!', 'success');
+      }).catch(err => {
+        showToast('Failed to copy to clipboard', 'error');
+      });
     });
     
     // Single Tweet Composer Trigger
@@ -399,4 +448,52 @@ function triggerTweet() {
   
   closeComposer();
   showToast('Opened Twitter sharing intent window!', 'success');
+}
+
+// Export Filtered Release Notes to CSV
+function exportToCSV() {
+  const query = searchInput.value.toLowerCase().trim();
+  const filterType = typeFilter.value;
+  
+  const filtered = allUpdates.filter(update => {
+    const matchesSearch = 
+      update.content_text.toLowerCase().includes(query) || 
+      update.type.toLowerCase().includes(query) || 
+      update.date.toLowerCase().includes(query);
+      
+    const matchesType = 
+      filterType === 'all' || 
+      update.type.toLowerCase() === filterType;
+      
+    return matchesSearch && matchesType;
+  });
+  
+  if (filtered.length === 0) {
+    showToast('No updates to export!', 'error');
+    return;
+  }
+  
+  const escapeCSV = (text) => {
+    if (!text) return '""';
+    return '"' + text.replace(/"/g, '""') + '"';
+  };
+  
+  let csvContent = 'ID,Date,Type,Link,Content\n';
+  filtered.forEach(u => {
+    csvContent += `${escapeCSV(u.id)},${escapeCSV(u.date)},${escapeCSV(u.type)},${escapeCSV(u.link)},${escapeCSV(u.content_text)}\n`;
+  });
+  
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  
+  const today = new Date().toISOString().slice(0, 10);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `bigquery_release_notes_${today}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  showToast(`Exported ${filtered.length} updates to CSV!`, 'success');
 }
