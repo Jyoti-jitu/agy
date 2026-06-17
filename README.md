@@ -45,7 +45,7 @@ agy-cli-projects/
 - **Frontend**: Vanilla HTML5, Vanilla CSS3 (Custom Variables, Flexbox/Grid, Backdrop-filter), Vanilla JavaScript (ES6+, Fetch API)
 - **Deployment & Tooling**: Git, Pip, Virtualenv
 
----
+---changes by jitu
 
 ## 🚀 Getting Started
 
